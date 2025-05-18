@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Responsive Slide Puzzle</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background: linear-gradient(135deg, #74ebd5 0%, #9face6 100%);
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    #game-container {
+      width: 90vmin;
+      max-width: 500px;
+      background: white;
+      border-radius: 20px;
+      padding: 2vmin;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    h1 {
+      font-size: 5vmin;
+      margin: 0;
+    }
+
+    #board {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 1vmin;
+      margin: 2vmin 0;
+    }
+
+    .tile {
+      background-color: #3498db;
+      color: white;
+      font-size: 4.3vmin;
+      font-weight: bold;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-radius: 10%;
+      user-select: none;
+      transition: background 0.2s ease, transform 0.2s;
+      height: 14vmin;
+      cursor: pointer;
+    }
+
+    .tile.blank {
+      background-color: transparent;
+      box-shadow: none;
+      cursor: default;
+    }
+
+    .tile:not(.blank):hover {
+      background-color: #2980b9;
+      transform: scale(1.05);
+    }
+
+    #controls {
+      display: flex;
+      gap: 1vmin;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 1vmin;
+      align-items: center;
+    }
+
+    button {
+      padding: 1vmin 2vmin;
+      font-size: 2.5vmin;
+      border: none;
+      border-radius: 1vmin;
+      background-color: #2c3e50;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+      user-select: none;
+    }
+
+    #message {
+      font-size: 3vmin;
+      font-weight: 600;
+      color: #2c3e50;
+      height: 3vmin;
+      margin-bottom: 1vmin;
+      min-height: 3em;
+      text-align: center;
+    }
+
+    #timer, #score-history {
+      font-size: 2.5vmin;
+      margin: 0.5vmin;
+    }
+
+    #developer-credit {
+      position: absolute;
+      top: 1vmin;
+      right: 2vmin;
+      font-size: 3vmin;
+      color: white;
+      font-weight: bold;
+      user-select: none;
+    }
+
+    #intro-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(44, 62, 80, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      transition: opacity 0.5s ease;
+    }
+
+    #intro-message {
+      color: white;
+      font-size: 5vmin;
+      font-weight: bold;
+      text-align: center;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="intro-overlay">
+    <div id="intro-message">🎮 Press Any Button to Start</div>
+  </div>
+  <div id="developer-credit">Developed by Hemant Tyagi</div>
+  <div id="game-container">
+    <h1>Slide Puzzle</h1>
+    <div id="board"></div>
+    <div id="timer">Time: 0s</div>
+    <div id="controls">
+      <button id="start">Start</button>
+      <button id="pause">Pause</button>
+      <button id="reset">Reset</button>
+      <button id="new-game">New Game</button>
+      <button id="solve">Solve</button>
+    </div>
+    <div id="message"></div>
+    <div id="score-history"></div>
+  </div>
+
+  <audio id="move-sound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
+  <audio id="win-sound" src="https://actions.google.com/sounds/v1/cartoon/concussive_hit_guitar_boing.ogg" preload="auto"></audio>
+
+  <script>
+    const board = document.getElementById("board");
+    const startBtn = document.getElementById("start");
+    const pauseBtn = document.getElementById("pause");
+    const resetBtn = document.getElementById("reset");
+    const newGameBtn = document.getElementById("new-game");
+    const solveBtn = document.getElementById("solve");
+    const message = document.getElementById("message");
+    const timerDisplay = document.getElementById("timer");
+    const scoreHistory = document.getElementById("score-history");
+
+    const moveSound = document.getElementById("move-sound");
+    const winSound = document.getElementById("win-sound");
+
+    let tiles = [];
+    let blankIndex = 15;
+    let timer = null;
+    let time = 0;
+    let gameStarted = false;
+    let solving = false;
+
+    function initBoard() {
+      tiles = [];
+      for (let i = 1; i <= 15; i++) {
+        tiles.push(i);
+      }
+      tiles.push(null);
+      blankIndex = 15;
+    }
+
+    function shuffleBoard() {
+      do {
+        for (let i = tiles.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+        }
+        blankIndex = tiles.indexOf(null);
+      } while (!isSolvable() || isSolved());
+    }
+
+    function isSolvable() {
+      let invCount = 0;
+      const arr = tiles.filter(t => t !== null);
+      for (let i = 0; i < arr.length - 1; i++) {
+        for (let j = i + 1; j < arr.length; j++) {
+          if (arr[i] > arr[j]) invCount++;
+        }
+      }
+      let blankRowFromBottom = 4 - Math.floor(blankIndex / 4);
+      return (blankRowFromBottom % 2 === 0) ? invCount % 2 === 1 : invCount % 2 === 0;
+    }
+
+    function isSolved() {
+      for (let i = 0; i < 15; i++) {
+        if (tiles[i] !== i + 1) return false;
+      }
+      return true;
+    }
+
+    function renderBoard() {
+      board.innerHTML = "";
+      tiles.forEach((tile, index) => {
+        const tileElem = document.createElement("div");
+        tileElem.className = "tile";
+        if (tile === null) {
+          tileElem.classList.add("blank");
+          tileElem.textContent = "";
+        } else {
+          tileElem.textContent = tile;
+          tileElem.onclick = () => moveTile(index);
+        }
+        board.appendChild(tileElem);
+      });
+    }
+
+    function canMove(index) {
+      return (
+        (index % 4 !== 0 && blankIndex === index - 1) ||
+        ((index + 1) % 4 !== 0 && blankIndex === index + 1) ||
+        (blankIndex === index - 4) ||
+        (blankIndex === index + 4)
+      );
+    }
+
+    function moveTile(index) {
+      if (!gameStarted || solving) return;
+      if (canMove(index)) {
+        [tiles[index], tiles[blankIndex]] = [tiles[blankIndex], tiles[index]];
+        blankIndex = index;
+        renderBoard();
+        playMoveSound();
+        if (isSolved()) {
+          gameStarted = false;
+          clearInterval(timer);
+          timer = null;
+          message.textContent = "🎉 Puzzle solved!";
+          playWinSound();
+          addScore(time);
+        } else {
+          message.textContent = "";
+        }
+      }
+    }
+
+    function startTimer() {
+      if (timer) return;
+      timer = setInterval(() => {
+        time++;
+        timerDisplay.textContent = `Time: ${time}s`;
+      }, 1000);
+    }
+
+    function pauseTimer() {
+      clearInterval(timer);
+      timer = null;
+    }
+
+    function resetTimer() {
+      pauseTimer();
+      time = 0;
+      timerDisplay.textContent = `Time: 0s`;
+    }
+
+    function playMoveSound() {
+      moveSound.currentTime = 0;
+      moveSound.play();
+    }
+
+    function playWinSound() {
+      winSound.currentTime = 0;
+      winSound.play();
+    }
+
+    function addScore(time) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.textContent = `${timeStr}: Solved in ${time}s`;
+      scoreHistory.prepend(entry);
+    }
+
+    function solvePuzzle() {
+      if (!gameStarted) return;
+      solving = true;
+      pauseTimer();
+      for (let i = 0; i < 15; i++) {
+        tiles[i] = i + 1;
+      }
+      tiles[15] = null;
+      blankIndex = 15;
+      renderBoard();
+      message.textContent = "Puzzle solved instantly!";
+      playWinSound();
+      addScore(time);
+      solving = false;
+      gameStarted = false;
+      resetTimer();
+    }
+
+    function startGame() {
+      initBoard();
+      shuffleBoard();
+      renderBoard();
+      gameStarted = true;
+      message.textContent = "";
+      resetTimer();
+      startTimer();
+      pauseBtn.textContent = "Pause";
+    }
+
+    function pauseGame() {
+      if (!gameStarted) return;
+      if (timer) {
+        pauseTimer();
+        pauseBtn.textContent = "Resume";
+        message.textContent = "Game paused.";
+      } else {
+        startTimer();
+        pauseBtn.textContent = "Pause";
+        message.textContent = "";
+      }
+    }
+
+    function resetGame() {
+      if (!gameStarted) return;
+      initBoard();
+      renderBoard();
+      blankIndex = 15;
+      resetTimer();
+      message.textContent = "Board reset.";
+    }
+
+    function hideIntroOverlay() {
+      const overlay = document.getElementById("intro-overlay");
+      overlay.style.opacity = "0";
+      setTimeout(() => overlay.style.display = "none", 500);
+    }
+
+    function handleFirstInteraction() {
+      if (!gameStarted) {
+        hideIntroOverlay();
+        startGame();
+      }
+    }
+
+    document.body.addEventListener("keydown", handleFirstInteraction, { once: true });
+    document.body.addEventListener("click", handleFirstInteraction, { once: true });
+
+    startBtn.onclick = startGame;
+    pauseBtn.onclick = pauseGame;
+    resetBtn.onclick = resetGame;
+    newGameBtn.onclick = startGame;
+    solveBtn.onclick = solvePuzzle;
+
+    window.onload = () => {
+      initBoard();
+      renderBoard();
+    };
+  </script>
+</body>
+</html>
